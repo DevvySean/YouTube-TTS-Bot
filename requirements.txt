@@ -3,5 +3,6 @@ google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.1.1
 pyttsx3==2.90
 python-dotenv==1.0.0
-pyobjc-framework-Cocoa==10.1
-pyobjc-framework-AVFoundation==10.1 
+# Optional dependencies for macOS
+# pyobjc-framework-Cocoa==10.1  # Only needed on macOS
+# pyobjc-framework-AVFoundation==10.1  # Only needed on macOS 

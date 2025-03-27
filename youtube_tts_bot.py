@@ -1,11 +1,18 @@
 import os
 import time
 import subprocess
+import platform
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import pickle
 from dotenv import load_dotenv
+
+# For Windows TTS
+try:
+    import pyttsx3
+except ImportError:
+    pass
 
 # Load environment variables
 load_dotenv()
@@ -17,8 +24,12 @@ API_VERSION = 'v3'
 CLIENT_SECRETS_FILE = 'client_secrets.json'
 
 # TTS Settings
-TTS_VOICE = os.getenv('TTS_VOICE', 'Alex')  # Default voice is Alex
-TTS_RATE = os.getenv('TTS_RATE', '180')     # Default rate is 180 words per minute
+TTS_VOICE = os.getenv('TTS_VOICE', 'Alex')  # Default voice is Alex for macOS
+TTS_RATE = int(os.getenv('TTS_RATE', '180'))  # Default rate is 180 words per minute
+
+# Platform detection
+IS_MACOS = platform.system() == 'Darwin'
+IS_WINDOWS = platform.system() == 'Windows'
 
 def get_youtube_service():
     creds = None
@@ -99,36 +110,83 @@ def get_chat_messages(youtube, live_chat_id, last_message_id=None):
         return None
 
 def get_available_voices():
-    """Get a list of available voices on macOS"""
-    try:
-        result = subprocess.run(['say', '-v', '?'], capture_output=True, text=True)
-        voices = []
-        for line in result.stdout.split('\n'):
-            if line.strip():
-                voice_name = line.split()[0]
-                voices.append(voice_name)
-        return voices
-    except Exception as e:
-        print(f"Error getting available voices: {e}")
-        return ["Alex", "Samantha", "Tom", "Victoria", "Daniel"]  # Return some default voices
+    """Get a list of available voices on the current platform"""
+    if IS_MACOS:
+        try:
+            result = subprocess.run(['say', '-v', '?'], capture_output=True, text=True)
+            voices = []
+            for line in result.stdout.split('\n'):
+                if line.strip():
+                    voice_name = line.split()[0]
+                    voices.append(voice_name)
+            return voices
+        except Exception as e:
+            print(f"Error getting available voices: {e}")
+            return ["Alex", "Samantha", "Tom", "Victoria", "Daniel"]  # Return some default macOS voices
+    
+    elif IS_WINDOWS:
+        try:
+            engine = pyttsx3.init()
+            return [voice.name for voice in engine.getProperty('voices')]
+        except Exception as e:
+            print(f"Error getting available voices: {e}")
+            return ["Default Windows Voice"]
+    
+    else:
+        print("Unsupported platform for voice listing")
+        return ["Default Voice"]
 
 def speak_message(message):
     try:
-        # Use macOS's built-in 'say' command with the selected voice and rate
-        subprocess.run(['say', '-v', TTS_VOICE, '-r', TTS_RATE, message])
+        if IS_MACOS:
+            # Use macOS's built-in 'say' command with the selected voice and rate
+            subprocess.run(['say', '-v', TTS_VOICE, '-r', str(TTS_RATE), message])
+        
+        elif IS_WINDOWS:
+            # Use pyttsx3 for Windows
+            engine = pyttsx3.init()
+            
+            # Set voice if specified and available
+            voices = engine.getProperty('voices')
+            if voices:
+                # On Windows, we need to find the voice by name in the available voices
+                for voice in voices:
+                    if TTS_VOICE.lower() in voice.name.lower():
+                        engine.setProperty('voice', voice.id)
+                        break
+            
+            # Set speaking rate (pyttsx3 uses different scale than macOS)
+            # macOS rate is words per minute, pyttsx3 is relative to default (200)
+            engine.setProperty('rate', TTS_RATE)
+            
+            # Speak the message
+            engine.say(message)
+            engine.runAndWait()
+        
+        else:
+            print(f"Unsupported platform for TTS: {platform.system()}")
+            print(f"Message: {message}")
+            
     except Exception as e:
         print(f"Error speaking message: {e}")
+        print(f"Message: {message}")
 
 def main():
     # Initialize YouTube API
     youtube = get_youtube_service()
     
-    # Print available voices
-    print("\nAvailable TTS voices:")
-    voices = get_available_voices()
-    print(", ".join(voices[:10]) + "... and more")
-    print(f"Current voice: {TTS_VOICE} (set TTS_VOICE in .env to change)")
-    print(f"Current rate: {TTS_RATE} (set TTS_RATE in .env to change)")
+    # Print platform info and available voices
+    print(f"\nRunning on {platform.system()} {platform.version()}")
+    
+    if IS_MACOS or IS_WINDOWS:
+        print("\nAvailable TTS voices:")
+        voices = get_available_voices()
+        if voices:
+            print(", ".join(voices[:10]) + ("..." if len(voices) > 10 else ""))
+        print(f"Current voice: {TTS_VOICE} (set TTS_VOICE in .env to change)")
+        print(f"Current rate: {TTS_RATE} (set TTS_RATE in .env to change)")
+    else:
+        print("\nTTS is not supported on this platform")
     
     # Get video ID from environment variable
     video_id = os.getenv('VIDEO_ID')
