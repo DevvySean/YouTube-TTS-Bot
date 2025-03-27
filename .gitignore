@@ -27,6 +27,7 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+.venv
 
 # OS specific
 .DS_Store
